@@ -1,6 +1,7 @@
 const path = require('path');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
 const { InjectManifest } = require('workbox-webpack-plugin');
+const CopyWebpackPlugin = require('copy-webpack-plugin');
 const webpack = require('webpack');
 
 module.exports = (env, argv) => {
@@ -11,6 +12,12 @@ module.exports = (env, argv) => {
             template: './src/index.html',
         }),
         new webpack.HotModuleReplacementPlugin(),
+        new CopyWebpackPlugin({
+            patterns: [
+                { from: 'src/manifest.webmanifest', to: 'manifest.webmanifest' },
+                { from: 'src/images/icons', to: 'images/icons' }
+            ],
+        }),
     ];
 
     if (isProduction) {
