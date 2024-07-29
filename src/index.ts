@@ -19,19 +19,13 @@ addBtn.style.display = 'none';
 document.body.appendChild(addBtn);
 
 window.addEventListener('beforeinstallprompt', (e) => {
-    // Prevent Chrome 67 and earlier from automatically showing the prompt
     e.preventDefault();
-    // Stash the event so it can be triggered later.
     deferredPrompt = e;
-    // Update UI to notify the user they can add to home screen
     addBtn.style.display = 'block';
 
     addBtn.addEventListener('click', (e) => {
-        // Hide the button
         addBtn.style.display = 'none';
-        // Show the install prompt
         deferredPrompt.prompt();
-        // Wait for the user to respond to the prompt
         deferredPrompt.userChoice.then((choiceResult: any) => {
             if (choiceResult.outcome === 'accepted') {
                 console.log('User accepted the A2HS prompt');
@@ -43,15 +37,121 @@ window.addEventListener('beforeinstallprompt', (e) => {
     });
 });
 
+interface Device {
+    name?: string;
+    id: string;
+    rssi?: number;
+}
+
+function saveDevice(device: BluetoothDevice) {
+    let devices: Device[] = JSON.parse(localStorage.getItem('devices') || '[]');
+    const deviceIndex = devices.findIndex(d => d.id === device.id);
+
+    if (deviceIndex !== -1) {
+        devices[deviceIndex].name = device.name;
+    } else {
+        devices.push({
+            name: device.name,
+            id: device.id
+        });
+    }
+
+    localStorage.setItem('devices', JSON.stringify(devices));
+}
+
+function loadDevices() {
+    const storedDevices: Device[] = JSON.parse(localStorage.getItem('devices') || '[]');
+    const deviceMap = new Map(storedDevices.map(device => [device.id, device]));
+
+    const deviceList = document.getElementById('device-list');
+    if (deviceList) deviceList.innerHTML = '';
+
+    deviceMap.forEach(device => {
+        displayDevice(device);
+    });
+}
+
 async function connectBluetooth() {
     try {
-        const device = await navigator.bluetooth.requestDevice({
-            acceptAllDevices: true
-        });
+        const options: RequestDeviceOptions = {
+            acceptAllDevices: true,
+            optionalServices: ['battery_service']
+        };
+
+        const device = await navigator.bluetooth.requestDevice(options);
         console.log('Device selected:', device);
+        saveDevice(device);
+        displayDevice({ name: device.name, id: device.id });
     } catch (error) {
         console.log('Error selecting device:', error);
     }
 }
 
+async function scanAndDisplayDevices() {
+    const knownDevices: Device[] = JSON.parse(localStorage.getItem('devices') || '[]');
+    const filters = knownDevices
+        .filter(device => device.name)
+        .map(device => ({ name: device.name }));
+
+    if (filters.length === 0) {
+        console.log('No known devices to filter.');
+        return;
+    }
+
+    try {
+        console.log('Scanning for devices...');
+        const options: RequestDeviceOptions = { filters };
+
+        const device = await navigator.bluetooth.requestDevice(options);
+
+        const newDevice: Device = {
+            name: device.name,
+            id: device.id,
+            rssi: undefined // RSSI недоступен через requestDevice
+        };
+        updateDeviceList(newDevice);
+
+    } catch (error) {
+        console.log('Error during Bluetooth scan:', error);
+    }
+}
+
+function updateDeviceList(device: Device) {
+    const devicesContainer = document.getElementById('devices');
+    const deviceList = document.getElementById('device-list');
+    if (devicesContainer && deviceList) {
+        devicesContainer.style.display = 'block';
+        let listItem = document.querySelector(`#device-${device.id}`);
+        if (!listItem) {
+            listItem = document.createElement('li');
+            listItem.id = `device-${device.id}`;
+            deviceList.appendChild(listItem);
+        }
+        listItem.textContent = `${device.name || 'Unknown device'} (${device.id}) - Signal Strength: ${device.rssi !== undefined ? device.rssi : 'N/A'}`;
+    }
+}
+
+function displayDevice(device: Device) {
+    const devicesContainer = document.getElementById('devices');
+    const deviceList = document.getElementById('device-list');
+    if (devicesContainer && deviceList) {
+        devicesContainer.style.display = 'block';
+        let listItem = document.createElement('li');
+        listItem.id = `device-${device.id}`;
+        listItem.textContent = `${device.name || 'Unknown device'} (${device.id})`;
+        deviceList.appendChild(listItem);
+    }
+}
+
 document.getElementById('connect-btn')?.addEventListener('click', connectBluetooth);
+document.getElementById('scan-btn')?.addEventListener('click', async () => {
+    try {
+        await scanAndDisplayDevices();
+    } catch (error) {
+        console.error('Error during Bluetooth scan:', error);
+    }
+});
+
+window.addEventListener('load', () => {
+    loadDevices();
+});
